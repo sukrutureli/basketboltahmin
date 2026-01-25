@@ -141,7 +141,7 @@ public class BasketballScraper {
 				stable++;
 			else
 				stable = 0;
-			if (stable >= 3) {
+			if (stable >= 10) {
 				System.out.println("✅ Scroll tamamlandı (sabitliğe ulaşıldı)");
 				break;
 			}
@@ -398,3 +398,4 @@ public class BasketballScraper {
 		}
 	}
 }
+
