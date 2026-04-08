@@ -14,12 +14,23 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.Map;
 
 public class BasketballScraper {
 
 	private WebDriver driver;
 	private JavascriptExecutor js;
 	private WebDriverWait wait;
+
+	private static final String BASKETBALL_JSON_URL =
+        "https://sukrutureli.github.io/Scraper/output/latestBasketbol.json";
 
 	public BasketballScraper() {
 		setupDriver();
@@ -36,10 +47,115 @@ public class BasketballScraper {
 		wait = new WebDriverWait(driver, Duration.ofSeconds(20));
 	}
 
+	public List<MatchInfo> fetchMatches() {
+    List<MatchInfo> list = new ArrayList<>();
+
+    try {
+        System.out.println("🔗 Basketbol JSON açılıyor: " + BASKETBALL_JSON_URL);
+
+        List<Map<String, Object>> rows = downloadBasketballJsonRows();
+        System.out.println("🏀 JSON satır sayısı: " + rows.size());
+
+        int index = 0;
+        for (Map<String, Object> row : rows) {
+            try {
+                String name = asString(row.get("name"));
+                String href = asString(row.get("url"));
+                String time = asString(row.get("time"));
+
+                Odds odds = new Odds(
+                        asDouble(row.get("ms1")),
+                        asDouble(row.get("ms2")),
+                        asDouble(row.get("h1Value")),
+                        asDouble(row.get("h1")),
+                        asDouble(row.get("h2")),
+                        asDouble(row.get("h2Value")),
+                        asDouble(row.get("alt")),
+                        asDouble(row.get("limit")),
+                        asDouble(row.get("ust"))
+                );
+
+                list.add(new MatchInfo(name, time, href, odds, index++));
+                System.out.println("✅ " + name + " (" + time + ") eklendi. | URL=" + href);
+
+            } catch (Exception e) {
+                System.out.println("⚠️ Basket satırı parse edilemedi: " + e.getMessage());
+            }
+        }
+
+        System.out.println("✅ Toplam basketbol maçı: " + list.size());
+
+    } catch (Exception e) {
+        System.out.println("fetchMatches JSON hata: " + e.getMessage());
+        e.printStackTrace();
+    }
+
+    return list;
+}
+
+	private List<Map<String, Object>> downloadBasketballJsonRows() throws Exception {
+    HttpURLConnection conn = null;
+
+    try {
+        conn = (HttpURLConnection) new URL(BASKETBALL_JSON_URL).openConnection();
+        conn.setRequestMethod("GET");
+        conn.setConnectTimeout(15000);
+        conn.setReadTimeout(30000);
+        conn.setRequestProperty("Accept", "application/json");
+        conn.setRequestProperty("User-Agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36");
+
+        int status = conn.getResponseCode();
+        if (status != 200) {
+            throw new RuntimeException("latestBasketbol.json alınamadı. HTTP=" + status);
+        }
+
+        ObjectMapper mapper = new ObjectMapper();
+        mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+        try (InputStream is = conn.getInputStream()) {
+            return mapper.readValue(is, new TypeReference<List<Map<String, Object>>>() {});
+        }
+
+    } finally {
+        if (conn != null) {
+            conn.disconnect();
+        }
+    }
+}
+
+private String asString(Object value) {
+    if (value == null) {
+        return "";
+    }
+    return String.valueOf(value).trim();
+}
+
+private double asDouble(Object value) {
+    try {
+        if (value == null) {
+            return 0.0;
+        }
+
+        if (value instanceof Number) {
+            return ((Number) value).doubleValue();
+        }
+
+        String s = String.valueOf(value).trim();
+        if (s.isEmpty() || s.equals("-")) {
+            return 0.0;
+        }
+
+        return Double.parseDouble(s.replace(",", "."));
+    } catch (Exception e) {
+        return 0.0;
+    }
+}
+
 	// =============================================================
 	// GÜNLÜK MAÇLAR
 	// =============================================================
-	public List<MatchInfo> fetchMatches() {
+	public List<MatchInfo> fetchMatchesSelenium() {
 		List<MatchInfo> list = new ArrayList<>();
 		try {
 			String date = LocalDate.now(ZoneId.of("Europe/Istanbul")).format(DateTimeFormatter.ofPattern("dd.MM.yyyy"));
